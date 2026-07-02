@@ -22,7 +22,7 @@ empathetic AI support — while always being honest that it is a **companion, no
 
 ## Features
 
-### 1. AI Companion (Claude-powered)
+### 1. AI Companion 
 - Empathetic, non-judgmental conversation
 - Full session history with context memory
 - **Crisis detection** — automatically shows emergency resources when needed
@@ -58,7 +58,7 @@ empathetic AI support — while always being honest that it is a **companion, no
 Backend:   Spring Boot 3.2 · Spring Security · Spring Data JPA
 Database:  MySQL 8+ (Hibernate auto-schema)
 Auth:      JWT (io.jsonwebtoken / JJWT)
-AI:        Anthropic Claude API (claude-sonnet-4-20250514)
+AI:       Ollama + Llama 3.2 (Local AI Model)
 HTTP:      Spring WebFlux WebClient
 Docs:      SpringDoc OpenAPI / Swagger UI
 ```
@@ -106,7 +106,8 @@ mindbloom/
 - Java 17+
 - MySQL 8+
 - Maven 3.8+
-- Anthropic API key (get one at console.anthropic.com)
+-Ollama (Local AI Runtime)
+Llama 3 Local AI Model
 
 ### 2. Create the database
 ```sql
