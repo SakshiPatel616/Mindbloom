@@ -1,0 +1,97 @@
+# ============================================================
+#  MindBloom – Application Configuration
+# ============================================================
+
+spring:
+  application:
+    name: mindbloom
+
+  # --- Database ---
+  datasource:
+    url: jdbc:mysql://localhost:3306/mindbloom_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+     
+        format_sql: true
+
+  # --- Jackson ---
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+# --- JWT ---
+jwt:
+  secret: ${JWT_SECRET:mindbloom-super-secret-key-change-in-production-2024}
+  expiration: 86400000        # 24 hours in ms
+  refresh-expiration: 604800000 # 7 days in ms
+
+# --- AI Assistant (Anthropic Claude) ---
+ai:
+  provider: ollama
+  ollama:
+    base-url: http://localhost:11434
+    model: llama3
+ 
+  system-prompt: |
+    You are MindBloom, a compassionate and empathetic mental wellness companion.
+    Your role is to provide emotional support, not clinical advice or therapy.
+    
+    Core principles:
+    - Always be warm, non-judgmental, and validating
+    - Use evidence-informed techniques (CBT, mindfulness, grounding) in simple language
+    - NEVER diagnose or prescribe medication
+    - If you detect crisis signals (self-harm, suicide, danger), ALWAYS provide crisis resources immediately
+    - Encourage professional help when appropriate
+    - Celebrate small wins and normalize struggle
+    - You are a COMPANION, not a replacement for a therapist
+    
+    Crisis resources to always share when needed:
+    - International: findahelpline.com
+    - Canada: 1-833-456-4566 (Crisis Services Canada)
+    - US: 988 (Suicide & Crisis Lifeline)
+    
+    Keep responses warm, concise, and human. Never sound clinical or robotic.
+
+# --- Mindbloom Config ---
+mindbloom:
+  crisis-keywords:
+    - "kill myself"
+    - "end my life"
+    - "suicide"
+    - "self-harm"
+    - "hurt myself"
+    - "don't want to live"
+    - "no reason to live"
+  anonymous-mode-allowed: true
+  max-journal-length: 5000
+  max-chat-history: 50
+
+# --- Logging ---
+logging:
+  level:
+    com.mindbloom: INFO
+    org.springframework.security: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# --- OpenAPI ---
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha

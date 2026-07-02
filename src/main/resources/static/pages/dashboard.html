@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard – MindBloom</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <style>
+    .stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-bottom:1.25rem; }
+    .bottom-row { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
+  </style>
+</head>
+<body data-page="dashboard">
+<div class="app-shell">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="page-content">
+
+    <div class="page-header">
+      <h1 id="greeting">Good morning 🌿</h1>
+      <p id="sub-greeting">How are you feeling today? Your check-in takes 30 seconds.</p>
+    </div>
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="card card-body">
+        <p class="card-label">Daily Streak</p>
+        <p class="stat-value" id="streak-val">—</p>
+        <div class="streak-row" id="streak-dots"></div>
+      </div>
+      <div class="card card-body">
+        <p class="card-label">This week's mood</p>
+        <p class="stat-value" id="dominant-mood">—</p>
+        <p class="stat-sub" id="avg-intensity">avg intensity —/10</p>
+      </div>
+      <div class="card card-body">
+        <p class="card-label">Journal entries</p>
+        <p class="stat-value" id="journal-count">—</p>
+        <p class="stat-sub">total entries</p>
+      </div>
+    </div>
+
+    <div class="bottom-row">
+      <!-- Today's check-in -->
+      <div class="card">
+        <div class="card-header"><h3>Today's Check-In</h3><span class="badge badge-sage" id="checkin-badge">Pending</span></div>
+        <div class="card-body">
+          <p class="card-label">How are you feeling?</p>
+          <div class="mood-grid" id="mood-grid" style="margin-bottom:1rem;"></div>
+
+          <div class="form-group">
+            <label class="form-label">Intensity <span id="intensity-display" style="color:var(--sage);font-weight:600">5</span>/10</label>
+            <input type="range" min="1" max="10" value="5" id="intensity-slider">
+          </div>
+          <div class="form-group">
+            <input id="mood-note" class="form-input" placeholder="Optional note — what's contributing to this? (max 200 chars)" maxlength="200">
+          </div>
+          <button class="btn btn-primary btn-full" id="log-btn">Log my mood</button>
+        </div>
+      </div>
+
+      <!-- 7-day chart + insight -->
+      <div class="card">
+        <div class="card-header"><h3>7-Day Pattern</h3></div>
+        <div class="card-body">
+          <div class="bar-chart" id="mood-chart" style="height:90px;margin-bottom:1rem;">
+            <div class="empty-state" style="padding:1rem;width:100%">
+              <p>Log your mood for a few days to see your pattern here.</p>
+            </div>
+          </div>
+          <div class="insight-box" id="insight-box">
+            <p id="insight-text">Start tracking your mood to see patterns emerge. 🌱</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick links -->
+    <div class="grid-3 mt-md">
+      <a href="chat.html" class="card card-body" style="display:block;cursor:pointer;">
+        <div style="font-size:1.5rem;margin-bottom:0.5rem;">💬</div>
+        <h3 style="margin-bottom:4px;">Talk to AI</h3>
+        <p style="font-size:0.8125rem;">Your companion is here, ready to listen.</p>
+      </a>
+      <a href="journal.html" class="card card-body" style="display:block;cursor:pointer;">
+        <div style="font-size:1.5rem;margin-bottom:0.5rem;">📓</div>
+        <h3 style="margin-bottom:4px;">Write in Journal</h3>
+        <p style="font-size:0.8125rem;">Put your thoughts somewhere safe.</p>
+      </a>
+      <a href="exercises.html" class="card card-body" style="display:block;cursor:pointer;">
+        <div style="font-size:1.5rem;margin-bottom:0.5rem;">🧘</div>
+        <h3 style="margin-bottom:4px;">Exercises</h3>
+        <p style="font-size:0.8125rem;">Breathing, grounding, mindfulness.</p>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/app.js"></script>
+<script>
+  if (!auth.requireAuth() || !auth.requireOnboarding()) { /* redirected */ }
+
+  const MOODS = [
+    {e:'😄',l:'Joyful',  v:'JOYFUL'},   {e:'😌',l:'Calm',   v:'CALM'},
+    {e:'😐',l:'Neutral', v:'NEUTRAL'},  {e:'😰',l:'Anxious',v:'ANXIOUS'},
+    {e:'😢',l:'Sad',     v:'SAD'},       {e:'😤',l:'Angry',  v:'ANGRY'},
+    {e:'😩',l:'Over-whelmed',v:'OVERWHELMED'}, {e:'🌱',l:'Hopeful',v:'HOPEFUL'},
+    {e:'😴',l:'Exhausted',v:'EXHAUSTED'},{e:'🙏',l:'Grateful',v:'GRATEFUL'},
+  ];
+  const BAR_COLORS = ['#4a7c59','#5b8ab0','#c97b84','#8fae96','#c4864a','#4a7c59','#5b8ab0'];
+
+  let selectedMood = null;
+
+  function initGreeting() {
+    const u = auth.user();
+    const h = new Date().getHours();
+    const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    document.getElementById('greeting').textContent = `${greet}, ${u?.displayName} 🌿`;
+  }
+
+  function renderMoodGrid() {
+    const grid = document.getElementById('mood-grid');
+    grid.innerHTML = '';
+    MOODS.forEach(m => {
+      const chip = document.createElement('div');
+      chip.className = 'mood-chip';
+      chip.innerHTML = `<span class="mood-emoji">${m.e}</span><span class="mood-label">${m.l}</span>`;
+      chip.addEventListener('click', () => {
+        $$('.mood-chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+        selectedMood = m.v;
+      });
+      grid.appendChild(chip);
+    });
+  }
+
+  function renderStreak(days = 6) {
+    const dots = document.getElementById('streak-dots');
+    dots.innerHTML = '';
+    document.getElementById('streak-val').textContent = days;
+    for (let i = 0; i < 7; i++) {
+      const d = document.createElement('div');
+      d.className = 'streak-dot' + (i < days ? ' done' : '') + (i === days - 1 ? ' today' : '');
+      dots.appendChild(d);
+    }
+  }
+
+  function renderBarChart(logs) {
+    const chart = document.getElementById('mood-chart');
+    if (!logs || logs.length === 0) return;
+    chart.innerHTML = '';
+    const max = Math.max(...logs.map(l => l.intensity));
+    logs.slice(0,7).reverse().forEach((l, i) => {
+      const col = document.createElement('div');
+      col.className = 'bar-col';
+      const fill = document.createElement('div');
+      fill.className = 'bar-fill';
+      const pct = Math.round((l.intensity / max) * 100);
+      fill.style.cssText = `height:${pct}%;background:${BAR_COLORS[i%BAR_COLORS.length]}`;
+      const day = document.createElement('div');
+      day.className = 'bar-day';
+      day.textContent = new Date(l.logDate).toLocaleDateString('en',{weekday:'short'}).slice(0,3);
+      col.appendChild(fill); col.appendChild(day);
+      chart.appendChild(col);
+    });
+  }
+
+  async function loadDashboard() {
+    try {
+      const summary = await api.mood.summary();
+      renderStreak(summary.last7Days?.length || 0);
+      if (summary.dominantMood) {
+        const found = MOODS.find(m => m.v === summary.dominantMood);
+        document.getElementById('dominant-mood').textContent = found ? `${found.e} ${found.l}` : summary.dominantMood;
+      }
+      document.getElementById('avg-intensity').textContent = `avg intensity ${summary.averageIntensity}/10`;
+      renderBarChart(summary.last7Days);
+      if (summary.insight) document.getElementById('insight-text').textContent = summary.insight;
+    } catch {}
+
+    try {
+      const journals = await api.journal.list(0);
+      document.getElementById('journal-count').textContent = journals.totalElements ?? '—';
+    } catch {}
+  }
+
+  document.getElementById('intensity-slider').addEventListener('input', function() {
+    document.getElementById('intensity-display').textContent = this.value;
+  });
+
+  document.getElementById('log-btn').addEventListener('click', async () => {
+    if (!selectedMood) { toast.warning('Please select a mood first.'); return; }
+    const btn = document.getElementById('log-btn');
+    setLoading(btn, true, 'Log my mood');
+    try {
+      await api.mood.log({
+        mood: selectedMood,
+        intensity: parseInt(document.getElementById('intensity-slider').value),
+        note: document.getElementById('mood-note').value.trim() || null,
+      });
+      toast.success('Mood logged — thanks for checking in 🌱');
+      document.getElementById('checkin-badge').textContent = 'Done ✓';
+      document.getElementById('checkin-badge').className = 'badge badge-sage';
+      btn.textContent = 'Logged ✓';
+      btn.disabled = true;
+      loadDashboard();
+    } catch (err) {
+      toast.error(err.message || 'Failed to log mood.');
+      setLoading(btn, false, 'Log my mood');
+    }
+  });
+
+  initSidebar();
+  initGreeting();
+  renderMoodGrid();
+  loadDashboard();
+</script>
+</body>
+</html>

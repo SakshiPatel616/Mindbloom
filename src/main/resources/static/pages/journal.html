@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Journal – MindBloom</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <style>
+    .journal-layout { display:grid; grid-template-columns:1fr 1.4fr; gap:1.5rem; align-items:start; }
+    @media(max-width:768px){ .journal-layout{ grid-template-columns:1fr; } }
+
+    /* Modal */
+    #entry-modal .modal { max-width:680px; }
+    .entry-content { font-size:0.9375rem; line-height:1.8; color:var(--ink-mid); white-space:pre-wrap; }
+    .reflection-box {
+      background:var(--sage-faint);
+      border:1px solid rgba(74,124,89,0.15);
+      border-radius:var(--radius-sm);
+      padding:1rem;
+      margin-top:1rem;
+    }
+    .reflection-box h4 { font-size:0.75rem; color:var(--sage); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.5rem; }
+    .reflection-box p { font-size:0.875rem; font-style:italic; color:var(--ink-mid); line-height:1.7; }
+  </style>
+</head>
+<body data-page="journal">
+<div class="app-shell">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="page-content">
+
+    <div class="page-header">
+      <h1>Your Journal</h1>
+      <p>This space belongs only to you. Write freely, without judgment.</p>
+    </div>
+
+    <div class="journal-layout">
+
+      <!-- Write new entry -->
+      <div class="card">
+        <div class="card-header"><h3>New Entry</h3></div>
+        <div class="card-body">
+          <div class="form-group">
+            <input id="j-title" class="form-input" placeholder="Give this entry a title…" maxlength="200">
+          </div>
+          <div class="form-group">
+            <textarea id="j-content" class="form-input form-textarea" rows="8"
+              placeholder="What's on your mind today? Write without judgment…" maxlength="5000"
+              oninput="updateCount()"></textarea>
+            <div class="flex-between mt-sm">
+              <p class="form-hint" id="char-count">0 / 5000</p>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Mood while writing</label>
+            <select id="j-mood" class="form-input">
+              <option value="">— Select (optional) —</option>
+              <option value="JOYFUL">😄 Joyful</option>
+              <option value="CALM">😌 Calm</option>
+              <option value="NEUTRAL">😐 Neutral</option>
+              <option value="ANXIOUS">😰 Anxious</option>
+              <option value="SAD">😢 Sad</option>
+              <option value="ANGRY">😤 Angry</option>
+              <option value="OVERWHELMED">😩 Overwhelmed</option>
+              <option value="HOPEFUL">🌱 Hopeful</option>
+              <option value="EXHAUSTED">😴 Exhausted</option>
+              <option value="GRATEFUL">🙏 Grateful</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <input id="j-tags" class="form-input" placeholder="Tags (optional): work, anxiety, gratitude…">
+          </div>
+
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:1rem;">
+            <input type="checkbox" id="j-reflect" style="accent-color:var(--sage);width:16px;height:16px;">
+            <span style="font-size:0.875rem;color:var(--ink-mid)">
+              Request a gentle AI reflection on this entry
+            </span>
+          </label>
+
+          <button class="btn btn-primary btn-full" id="save-btn">Save entry</button>
+        </div>
+      </div>
+
+      <!-- Entry list -->
+      <div>
+        <div class="flex-between mb-md">
+          <h3>Past entries</h3>
+          <span class="text-muted text-sm" id="entries-count"></span>
+        </div>
+        <div id="entries-list" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="empty-state">
+            <div class="empty-icon">📓</div>
+            <p>Your journal is empty. Write your first entry — it can be just one sentence.</p>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:1rem;">
+          <button id="load-more-btn" class="btn btn-ghost btn-sm hidden">Load more</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Entry view modal -->
+<div id="entry-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h3 id="modal-title" style="font-size:1.1rem;"></h3>
+        <p class="text-xs text-muted" id="modal-date"></p>
+      </div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-mood-badge" style="margin-bottom:1rem;"></div>
+      <div class="entry-content" id="modal-content"></div>
+      <div id="modal-reflection" class="hidden"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" id="delete-btn">Delete entry</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/app.js"></script>
+<script>
+  if (!auth.requireAuth()) {}
+
+  const MOOD_ICONS = {
+    JOYFUL:'😄',CALM:'😌',NEUTRAL:'😐',ANXIOUS:'😰',SAD:'😢',
+    ANGRY:'😤',OVERWHELMED:'😩',HOPEFUL:'🌱',EXHAUSTED:'😴',GRATEFUL:'🙏'
+  };
+
+  let page = 0;
+  let totalPages = 0;
+  let currentEntryId = null;
+
+  function updateCount() {
+    const len = document.getElementById('j-content').value.length;
+    document.getElementById('char-count').textContent = `${len} / 5000`;
+  }
+
+  function renderEntries(entries, append = false) {
+    const list = document.getElementById('entries-list');
+    if (!append) list.innerHTML = '';
+
+    if (!entries || entries.length === 0) {
+      list.innerHTML = `<div class="empty-state"><div class="empty-icon">📓</div><p>Your journal is empty. Write your first entry — it can be just one sentence.</p></div>`;
+      return;
+    }
+
+    entries.forEach(e => {
+      const card = document.createElement('div');
+      card.className = 'journal-card';
+      card.innerHTML = `
+        <h4>${e.title}</h4>
+        ${e.mood ? `<span style="font-size:1rem;">${MOOD_ICONS[e.mood] || ''}</span>` : ''}
+        <p style="margin-top:4px;">${truncate(e.content, 140)}</p>
+        ${e.tags ? `<p style="font-size:0.75rem;color:var(--ink-light);margin-top:4px;">#${e.tags.split(',').join(' #')}</p>` : ''}
+        <div class="journal-card-footer">
+          <span class="text-xs text-muted">${timeAgo(e.createdAt)}</span>
+          ${e.aiReflection ? `<span class="badge badge-sage" style="font-size:0.65rem;">🌱 Has reflection</span>` : ''}
+        </div>
+      `;
+      card.addEventListener('click', () => openEntry(e));
+      list.appendChild(card);
+    });
+  }
+
+  async function loadEntries(append = false) {
+    try {
+      const data = await api.journal.list(page);
+      totalPages = data.totalPages ?? 1;
+      document.getElementById('entries-count').textContent =
+        `${data.totalElements ?? 0} entries`;
+      renderEntries(data.content, append);
+      document.getElementById('load-more-btn').classList.toggle(
+        'hidden', page >= totalPages - 1
+      );
+    } catch (err) {
+      toast.error('Failed to load journal entries.');
+    }
+  }
+
+  function openEntry(entry) {
+    currentEntryId = entry.id;
+    document.getElementById('modal-title').textContent = entry.title;
+    document.getElementById('modal-date').textContent = formatDate(entry.createdAt);
+    document.getElementById('modal-content').textContent = entry.content;
+
+    const moodBadge = document.getElementById('modal-mood-badge');
+    moodBadge.innerHTML = entry.mood
+      ? `<span class="badge badge-sage">${MOOD_ICONS[entry.mood] || ''} ${entry.mood.toLowerCase()}</span>`
+      : '';
+
+    const refEl = document.getElementById('modal-reflection');
+    if (entry.aiReflection) {
+      refEl.className = 'reflection-box';
+      refEl.innerHTML = `<h4>🌱 AI Reflection</h4><p>${entry.aiReflection}</p>`;
+    } else {
+      refEl.className = 'hidden';
+    }
+
+    document.getElementById('entry-modal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('entry-modal').classList.add('hidden');
+    currentEntryId = null;
+  }
+
+  document.getElementById('entry-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  document.getElementById('delete-btn').addEventListener('click', async () => {
+    if (!currentEntryId) return;
+    if (!confirm('Delete this entry? This cannot be undone.')) return;
+    try {
+      await api.journal.delete(currentEntryId);
+      closeModal();
+      page = 0;
+      loadEntries();
+      toast.success('Entry deleted.');
+    } catch {
+      toast.error('Failed to delete entry.');
+    }
+  });
+
+  document.getElementById('save-btn').addEventListener('click', async () => {
+    const title   = document.getElementById('j-title').value.trim();
+    const content = document.getElementById('j-content').value.trim();
+    if (!title) { toast.warning('Please give your entry a title.'); return; }
+    if (!content) { toast.warning('Please write something before saving.'); return; }
+
+    const btn = document.getElementById('save-btn');
+    setLoading(btn, true, 'Save entry');
+
+    try {
+      await api.journal.create({
+        title,
+        content,
+        mood: document.getElementById('j-mood').value || null,
+        tags: document.getElementById('j-tags').value.trim() || null,
+        requestAiReflection: document.getElementById('j-reflect').checked,
+      });
+      toast.success('Entry saved. Your thoughts are safe here 🌿');
+      document.getElementById('j-title').value   = '';
+      document.getElementById('j-content').value = '';
+      document.getElementById('j-mood').value    = '';
+      document.getElementById('j-tags').value    = '';
+      document.getElementById('j-reflect').checked = false;
+      updateCount();
+      page = 0;
+      loadEntries();
+    } catch (err) {
+      toast.error(err.message || 'Failed to save entry.');
+    } finally {
+      setLoading(btn, false, 'Save entry');
+    }
+  });
+
+  document.getElementById('load-more-btn').addEventListener('click', () => {
+    page++;
+    loadEntries(true);
+  });
+
+  initSidebar();
+  loadEntries();
+</script>
+</body>
+</html>

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exercises – MindBloom</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <style>
+    .filter-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1.5rem; }
+    .filter-btn {
+      padding:0.375rem 0.875rem; border-radius:20px; font-size:0.8125rem; font-weight:500;
+      border:1.5px solid var(--ink-faint); background:white; color:var(--ink-mid);
+      cursor:pointer; transition:var(--transition);
+    }
+    .filter-btn:hover { border-color:var(--sage-mid); color:var(--sage); }
+    .filter-btn.active { border-color:var(--sage); background:var(--sage-light); color:var(--sage); }
+    .exercises-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+
+    /* Guided modal */
+    #guided-modal .modal { max-width:560px; }
+    .step-list { list-style:none; counter-reset:steps; }
+    .step-list li {
+      counter-increment:steps;
+      display:flex; gap:12px;
+      padding:0.875rem 0;
+      border-bottom:1px solid rgba(74,124,89,0.08);
+      font-size:0.9375rem; color:var(--ink-mid); line-height:1.6;
+    }
+    .step-list li::before {
+      content:counter(steps);
+      min-width:26px; height:26px;
+      background:var(--sage-light); color:var(--sage);
+      border-radius:50%; display:flex; align-items:center; justify-content:center;
+      font-weight:600; font-size:0.8125rem; flex-shrink:0; margin-top:2px;
+    }
+    .timer-display {
+      text-align:center; padding:1.5rem 0;
+      font-family:var(--font-serif); font-size:3rem; color:var(--sage);
+    }
+    .timer-sub { font-size:0.875rem; color:var(--ink-light); font-family:var(--font-sans); }
+  </style>
+</head>
+<body data-page="exercises">
+<div class="app-shell">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="page-content">
+
+    <div class="page-header">
+      <h1>Wellness Exercises</h1>
+      <p>Small practices, done consistently. One is enough for today.</p>
+    </div>
+
+    <div class="filter-bar" id="filter-bar">
+      <button class="filter-btn active" data-type="ALL">All</button>
+      <button class="filter-btn" data-type="BREATHING">💨 Breathing</button>
+      <button class="filter-btn" data-type="GROUNDING">🌍 Grounding</button>
+      <button class="filter-btn" data-type="CBT_REFRAME">🧠 CBT</button>
+      <button class="filter-btn" data-type="BODY_SCAN">🧘 Body Scan</button>
+      <button class="filter-btn" data-type="JOURNALING_PROMPT">📝 Journaling</button>
+      <button class="filter-btn" data-type="AFFIRMATION">🙏 Affirmation</button>
+    </div>
+
+    <div class="exercises-grid" id="exercises-grid">
+      <div class="empty-state" style="grid-column:1/-1;">
+        <div style="animation:spin 1s linear infinite;display:inline-block;font-size:1.5rem;">🌀</div>
+        <p style="margin-top:0.5rem;">Loading exercises…</p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Guided exercise modal -->
+<div id="guided-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="exercise-icon" id="modal-icon" style="width:40px;height:40px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:20px;"></div>
+        <div>
+          <h3 id="modal-title" style="font-size:1rem;"></h3>
+          <p class="text-xs text-muted" id="modal-meta"></p>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-icon" onclick="closeGuided()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="modal-desc" style="font-size:0.9rem;color:var(--ink-mid);margin-bottom:1.25rem;line-height:1.7;"></p>
+      <div id="modal-timer" class="hidden">
+        <div class="timer-display">
+          <span id="timer-val">0:00</span>
+          <p class="timer-sub" id="timer-label">Press start to begin</p>
+        </div>
+      </div>
+      <h4 style="font-size:0.8125rem;color:var(--ink-light);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.75rem;">Steps</h4>
+      <ol class="step-list" id="modal-steps"></ol>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeGuided()">Close</button>
+      <button class="btn btn-primary" id="start-timer-btn">Start timer</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/app.js"></script>
+<script>
+  if (!auth.requireAuth()) {}
+
+  const TYPE_CONFIG = {
+    BREATHING:        { icon:'💨', color:'#e8f5eb', badge:'badge-sage',  label:'Breathing' },
+    GROUNDING:        { icon:'🌍', color:'#fdeaec', badge:'badge-rose',  label:'Grounding' },
+    MEDITATION:       { icon:'🧘', color:'#e4eef6', badge:'badge-sky',   label:'Meditation' },
+    CBT_REFRAME:      { icon:'🧠', color:'#f5ece0', badge:'badge-amber', label:'CBT' },
+    BODY_SCAN:        { icon:'🫀', color:'#e8f5eb', badge:'badge-sage',  label:'Body Scan' },
+    JOURNALING_PROMPT:{ icon:'📝', color:'#f5ece0', badge:'badge-amber', label:'Journaling' },
+    AFFIRMATION:      { icon:'🙏', color:'#e4eef6', badge:'badge-sky',   label:'Affirmation' },
+  };
+
+  let allExercises = [];
+  let timerInterval = null;
+  let timerSeconds = 0;
+  let timerRunning = false;
+  let currentDuration = 5;
+
+  async function loadExercises(type = 'ALL') {
+    const grid = document.getElementById('exercises-grid');
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><p>Loading…</p></div>';
+    try {
+      const data = type === 'ALL'
+        ? await api.exercises.all()
+        : await api.exercises.byType(type);
+      allExercises = data;
+      renderGrid(data);
+    } catch {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><p>Failed to load exercises. Is the backend running?</p></div>';
+    }
+  }
+
+  function renderGrid(exercises) {
+    const grid = document.getElementById('exercises-grid');
+    grid.innerHTML = '';
+
+    if (!exercises || exercises.length === 0) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">🌿</div><p>No exercises found for this category.</p></div>';
+      return;
+    }
+
+    exercises.forEach(ex => {
+      const cfg = TYPE_CONFIG[ex.type] || { icon:'🌱', color:'#e8f5eb', badge:'badge-sage', label:ex.type };
+      const card = document.createElement('div');
+      card.className = 'exercise-item';
+      card.innerHTML = `
+        <div class="exercise-icon" style="background:${cfg.color}">${cfg.icon}</div>
+        <div class="exercise-info">
+          <h4>${ex.title}</h4>
+          <p>${ex.durationMinutes ? ex.durationMinutes + ' min · ' : ''}${cfg.label}</p>
+        </div>
+        <div class="exercise-meta">
+          <span class="badge ${cfg.badge}">${cfg.label}</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="color:var(--ink-faint)"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      `;
+      card.addEventListener('click', () => openGuided(ex, cfg));
+      grid.appendChild(card);
+    });
+  }
+
+  function openGuided(ex, cfg) {
+    resetTimer();
+    document.getElementById('modal-icon').textContent = cfg.icon;
+    document.getElementById('modal-icon').style.background = cfg.color;
+    document.getElementById('modal-title').textContent = ex.title;
+    document.getElementById('modal-meta').textContent =
+      [ex.durationMinutes ? ex.durationMinutes + ' min' : null,
+       `Level ${ex.difficultyLevel || 1}`].filter(Boolean).join(' · ');
+    document.getElementById('modal-desc').textContent = ex.description || '';
+
+    const stepsList = document.getElementById('modal-steps');
+    stepsList.innerHTML = '';
+    let steps = [];
+
+    if (Array.isArray(ex.steps)) {
+        steps = ex.steps;
+    } else if (typeof ex.steps === "string") {
+        try {
+            steps = JSON.parse(ex.steps);
+        } catch (e) {
+            steps = ex.steps.split("|");
+        }
+    }
+
+    steps.forEach(step => {
+        const li = document.createElement("li");
+        li.textContent = step;
+        stepsList.appendChild(li);
+    });
+
+    currentDuration = (ex.durationMinutes || 5) * 60;
+    document.getElementById('modal-timer').classList.remove('hidden');
+    document.getElementById('timer-val').textContent = formatTimer(currentDuration);
+    document.getElementById('timer-label').textContent = 'Press start to begin';
+    document.getElementById('start-timer-btn').textContent = 'Start timer';
+
+    document.getElementById('guided-modal').classList.remove('hidden');
+  }
+
+  function closeGuided() {
+    resetTimer();
+    document.getElementById('guided-modal').classList.add('hidden');
+  }
+
+  document.getElementById('guided-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeGuided();
+  });
+
+  function formatTimer(s) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2,'0')}`;
+  }
+
+  function resetTimer() {
+    clearInterval(timerInterval);
+    timerRunning = false;
+    timerSeconds = 0;
+  }
+
+  document.getElementById('start-timer-btn').addEventListener('click', () => {
+    if (timerRunning) {
+      clearInterval(timerInterval);
+      timerRunning = false;
+      document.getElementById('start-timer-btn').textContent = 'Resume';
+      document.getElementById('timer-label').textContent = 'Paused';
+    } else {
+      if (timerSeconds === 0) timerSeconds = currentDuration;
+      timerRunning = true;
+      document.getElementById('start-timer-btn').textContent = 'Pause';
+      document.getElementById('timer-label').textContent = 'Breathe…';
+
+      timerInterval = setInterval(() => {
+        timerSeconds--;
+        document.getElementById('timer-val').textContent = formatTimer(timerSeconds);
+        if (timerSeconds <= 0) {
+          clearInterval(timerInterval);
+          timerRunning = false;
+          document.getElementById('timer-label').textContent = 'Done — well done 🌿';
+          document.getElementById('start-timer-btn').textContent = 'Restart';
+          document.getElementById('timer-val').textContent = '✓';
+          timerSeconds = 0;
+        }
+      }, 1000);
+    }
+  });
+
+  // Filter buttons
+  document.getElementById('filter-bar').addEventListener('click', (e) => {
+    const btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    $$('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadExercises(btn.dataset.type);
+  });
+
+  initSidebar();
+  loadExercises();
+</script>
+</body>
+</html>

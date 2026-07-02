@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MindBloom</title>
+</head>
+<body>
+<script>
+  const token = localStorage.getItem('mb_token');
+  const user  = JSON.parse(localStorage.getItem('mb_user') || 'null');
+  if (token && user) {
+    window.location.href = user.onboardingCompleted
+      ? '/pages/dashboard.html'
+      : '/pages/onboarding.html';
+  } else {
+    window.location.href = '/pages/login.html';
+  }
+</script>
+</body>
+</html>

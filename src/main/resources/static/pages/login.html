@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In – MindBloom</title>
+  <link rel="stylesheet" href="../css/main.css">
+</head>
+<body>
+<div class="auth-shell">
+  <!-- Left branding panel -->
+  <div class="auth-left">
+    <div class="auth-left-inner">
+      <div class="logo"><span>🌱</span> MindBloom</div>
+      <h2>It's okay to not be okay.</h2>
+      <p>MindBloom is a safe, private space where you can be honest about how you're feeling — without judgment, without pressure.</p>
+
+      <div class="auth-principle">
+        <span>🔒</span>
+        <p>Your data is private and never sold. You can use an anonymous name.</p>
+      </div>
+      <div class="auth-principle">
+        <span>🤝</span>
+        <p>We are a companion — not a replacement for a therapist.</p>
+      </div>
+      <div class="auth-principle">
+        <span>🌱</span>
+        <p>Healing is slow. We respect your pace.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right form panel -->
+  <div class="auth-right">
+    <div class="auth-form-wrap">
+      <h1>Welcome back</h1>
+      <p class="sub">Sign in to continue your healing journey.</p>
+
+      <form id="login-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="email">Email</label>
+          <input id="email" type="email" class="form-input" placeholder="you@email.com" required>
+          <p class="form-error hidden" id="email-err"></p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input id="password" type="password" class="form-input" placeholder="••••••••" required>
+          <p class="form-error hidden" id="password-err"></p>
+        </div>
+        <p class="form-error hidden mb-sm" id="global-err"></p>
+        <button type="submit" class="btn btn-primary btn-full" id="submit-btn">Sign in</button>
+      </form>
+
+      <div class="auth-switch">
+        Don't have an account? <a href="register.html">Create one — it's free</a>
+      </div>
+
+      <div class="divider"></div>
+      <p style="font-size:0.75rem;color:var(--ink-light);text-align:center;line-height:1.6">
+        ⚠️ MindBloom is not a crisis service. If you are in immediate danger,<br>
+        please call emergency services or <strong>988</strong> (US) / <strong>1-833-456-4566</strong> (Canada).
+      </p>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/app.js"></script>
+<script>
+  // Redirect if already logged in
+  if (auth.isLoggedIn()) {
+    const u = auth.user();
+    window.location.href = u?.onboardingCompleted ? 'dashboard.html' : 'onboarding.html';
+  }
+
+  const form = document.getElementById('login-form');
+  const submitBtn = document.getElementById('submit-btn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const globalErr = document.getElementById('global-err');
+
+    globalErr.classList.add('hidden');
+    setLoading(submitBtn, true, 'Sign in');
+
+    try {
+      const res = await api.auth.login({ email, password });
+      auth.save(res.accessToken, res.user);
+      window.location.href = res.user?.onboardingCompleted ? 'dashboard.html' : 'onboarding.html';
+    } catch (err) {
+      globalErr.textContent = err.message || 'Login failed. Please check your credentials.';
+      globalErr.classList.remove('hidden');
+      setLoading(submitBtn, false, 'Sign in');
+    }
+  });
+</script>
+</body>
+</html>

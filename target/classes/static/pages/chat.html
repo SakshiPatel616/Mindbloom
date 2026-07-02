@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Companion – MindBloom</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <style>
+    .page-content { padding: 0; max-width: 100%; display:flex; flex-direction:column; height:100vh; }
+    .chat-header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid rgba(74,124,89,0.1);
+      background: white;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .chat-header-left { display:flex; align-items:center; gap: 12px; }
+    .ai-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--sage-light);
+      display:flex;align-items:center;justify-content:center;font-size:18px;
+    }
+    .ai-status { display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--ink-light); }
+    .status-dot { width:8px;height:8px;border-radius:50%;background:var(--sage); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .chat-wrap { flex:1;display:flex;flex-direction:column;overflow:hidden; }
+  </style>
+</head>
+<body data-page="chat">
+<div class="app-shell">
+  <nav class="sidebar" id="sidebar"></nav>
+  <div class="page-content">
+
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <div class="ai-avatar">🌱</div>
+        <div>
+          <h3 style="font-size:0.9375rem;">MindBloom AI Companion</h3>
+          <div class="ai-status"><div class="status-dot"></div> Ready to listen</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="new-chat-btn">+ New chat</button>
+    </div>
+
+    <!-- Crisis banner (hidden by default) -->
+    <div id="crisis-banner" class="hidden" style="padding:0 1.5rem;margin-top:1rem;"></div>
+
+    <div class="chat-wrap card" style="margin:1rem;border-radius:var(--radius-md);">
+      <div class="chat-messages" id="chat-messages">
+        <!-- Populated by JS -->
+      </div>
+
+      <div style="padding:0 1.5rem 0.5rem;">
+        <div id="typing-indicator" class="hidden">
+          <div class="msg-row" style="align-items:center;">
+            <div class="msg-avatar ai">🌱</div>
+            <div class="msg-bubble ai" style="padding:0.5rem 0.875rem;">
+              <span style="letter-spacing:4px;color:var(--ink-light)">···</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <textarea id="chat-input" placeholder="Share what's on your mind… (Shift+Enter for new line)" rows="1" maxlength="2000"></textarea>
+        <button class="btn btn-primary btn-icon" id="send-btn" style="height:42px;width:42px;border-radius:var(--radius-sm);" aria-label="Send">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+      <div class="chat-disclaimer">
+        ⚠️ MindBloom is not a crisis service. If you're in danger, call emergency services or
+        <strong>112</strong> (Emergency Services) / <strong>14416</strong> (Mental Health Support).
+        AI responses are not clinical advice.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/app.js"></script>
+<script>
+  if (!auth.requireAuth()) { /* redirected */ }
+
+  const user = auth.user();
+  const messagesEl = document.getElementById('chat-messages');
+  const inputEl    = document.getElementById('chat-input');
+  const sendBtn    = document.getElementById('send-btn');
+  const typingEl   = document.getElementById('typing-indicator');
+  let sessionId    = getOrCreateSession();
+  let sending      = false;
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function addMessage(role, content, crisisFlagged = false) {
+    const isUser = role === 'user';
+    const initials = user?.displayName?.slice(0,2).toUpperCase() || 'U';
+    const time = formatTime(new Date().toISOString());
+
+    const row = document.createElement('div');
+    row.className = `msg-row ${isUser ? 'user' : ''}`;
+
+    const avatarHtml = isUser
+      ? `<div class="msg-avatar user">${initials}</div>`
+      : `<div class="msg-avatar ai">🌱</div>`;
+
+    const bubbleContent = content
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+
+    row.innerHTML = `
+      ${avatarHtml}
+      <div style="display:flex;flex-direction:column;gap:4px;${isUser?'align-items:flex-end':''}">
+        <div class="msg-bubble ${isUser?'user':'ai'}">${bubbleContent}</div>
+        <span class="msg-time">${time}</span>
+      </div>
+    `;
+
+    messagesEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  function showCrisisBanner(resources) {
+    const banner = document.getElementById('crisis-banner');
+    banner.className = 'crisis-banner';
+    banner.innerHTML = `
+      <h4>🚨 You're not alone — please reach out to a real human right now</h4>
+      ${resources.map(r => `
+        <div class="crisis-resource">
+          <strong>${r.name}</strong>: ${r.contact}<br>
+          <span style="font-size:0.75rem">${r.description}</span>
+        </div>
+      `).join('')}
+    `;
+  }
+
+  async function loadHistory() {
+    try {
+      const data = await api.chat.history(sessionId);
+      if (data.messages && data.messages.length > 0) {
+        data.messages.forEach(m => addMessage(m.role, m.content));
+      } else {
+        addWelcome();
+      }
+    } catch {
+      addWelcome();
+    }
+  }
+
+  function addWelcome() {
+    const name = user?.displayName || 'there';
+    addMessage('assistant',
+      `Hi ${name} 🌱 I'm here with you. How are you feeling right now?\n\nThere's no right or wrong answer — just be honest with yourself. This space is safe.`
+    );
+  }
+
+  async function send() {
+    const text = inputEl.value.trim();
+    if (!text || sending) return;
+
+    sending = true;
+    sendBtn.disabled = true;
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+
+    addMessage('user', text);
+    typingEl.classList.remove('hidden');
+    scrollToBottom();
+
+    try {
+      const res = await api.chat.send({ message: text, sessionId });
+      typingEl.classList.add('hidden');
+      addMessage('assistant', res.message, res.crisisDetected);
+
+      if (res.crisisDetected && res.crisisResources) {
+        showCrisisBanner(res.crisisResources);
+      }
+    } catch (err) {
+      typingEl.classList.add('hidden');
+      addMessage('assistant', "I'm having a little trouble connecting right now. Please try again in a moment. You're not alone. 🌱");
+    } finally {
+      sending = false;
+      sendBtn.disabled = false;
+    }
+  }
+
+  // Auto-resize textarea
+  inputEl.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  sendBtn.addEventListener('click', send);
+
+  document.getElementById('new-chat-btn').addEventListener('click', () => {
+    sessionId = newSession();
+    messagesEl.innerHTML = '';
+    document.getElementById('crisis-banner').className = 'hidden';
+    addWelcome();
+  });
+
+  initSidebar();
+  loadHistory();
+</script>
+</body>
+</html>
